@@ -24,7 +24,7 @@ on:
         required: true
         type: string
     secrets:
-      github_token:
+      repo_token:
         description: GitHub token for API access
         required: true
       LLM_API_KEY:
@@ -57,7 +57,7 @@ jobs:
 
       - name: Run PR review pipeline
         env:
-          GITHUB_TOKEN: ${{ secrets.github_token }}
+          GITHUB_TOKEN: ${{ secrets.repo_token }}
           LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
           LLM_API_URL: ${{ env.LLM_API_URL }}
           LLM_MODEL: ${{ env.LLM_MODEL }}
