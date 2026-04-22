@@ -1,0 +1,83 @@
+name: Centralized PR Review
+
+on:
+  workflow_call:
+    inputs:
+      repository:
+        description: owner/repo for the target repository
+        required: true
+        type: string
+      pr_number:
+        description: Pull request number
+        required: true
+        type: string
+      base_branch:
+        description: PR base branch
+        required: true
+        type: string
+      head_branch:
+        description: PR head branch
+        required: true
+        type: string
+      commit_sha:
+        description: PR head commit SHA
+        required: true
+        type: string
+      github_token:
+        description: GitHub token for API access
+        required: true
+        type: string
+    secrets:
+      LLM_API_KEY:
+        description: API key for PwC OpenAI-compatible endpoint
+        required: true
+
+env:
+  LLM_API_URL: ${{ vars.LLM_API_URL || 'https://genai-sharedservice-americas.pwc.com' }}
+  LLM_MODEL: ${{ vars.LLM_MODEL || 'azure.gpt-4o-mini' }}
+
+jobs:
+  run-pr-review:
+    permissions:
+      contents: read
+      pull-requests: read
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout centralized agent repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run PR review pipeline
+        env:
+          GITHUB_TOKEN: ${{ inputs.github_token }}
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+          LLM_API_URL: ${{ env.LLM_API_URL }}
+          LLM_MODEL: ${{ env.LLM_MODEL }}
+        run: |
+          python main.py \
+            --repository "${{ inputs.repository }}" \
+            --pr-number "${{ inputs.pr_number }}" \
+            --base-branch "${{ inputs.base_branch }}" \
+            --head-branch "${{ inputs.head_branch }}" \
+            --commit-sha "${{ inputs.commit_sha }}"
+
+      - name: Upload PR review document
+        uses: actions/upload-artifact@v6
+        with:
+          name: pr-review-docx-${{ inputs.repository }}-${{ inputs.pr_number }}
+          path: artifacts/pr_review_report.docx
+
+      - name: Upload structured JSON output
+        uses: actions/upload-artifact@v6
+        with:
+          name: pr-review-json-${{ inputs.repository }}-${{ inputs.pr_number }}
+          path: artifacts/review_output.json

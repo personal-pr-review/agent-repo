@@ -1,0 +1,51 @@
+{
+  "pr_metadata": {
+    "repository": "acme/payments-service",
+    "pr_number": 42,
+    "title": "Fix idempotency handling for retry flow",
+    "html_url": "https://github.com/acme/payments-service/pull/42",
+    "author": "dev-user",
+    "base_branch": "main",
+    "head_branch": "feature/retry-idempotency",
+    "head_sha": "abc123def456",
+    "commits": 3,
+    "changed_files": 2,
+    "additions": 120,
+    "deletions": 35,
+    "linked_ticket": "PAY-1024",
+    "release_sprint": "Sprint-18"
+  },
+  "comparison_results": [
+    {
+      "file_path": "src/service/retry.py",
+      "change_type": "modified",
+      "change_summary": "Adds key-based lock and retry guard for duplicate requests.",
+      "behavioral_change": "Duplicate requests now return cached response instead of reprocessing.",
+      "risk_flags": [
+        "Lock timeout could surface false negatives under heavy load"
+      ],
+      "semantic_impact": "Improves consistency and idempotency behavior for clients.",
+      "risk_level": "Medium"
+    }
+  ],
+  "review_result": {
+    "summary": "PR improves reliability for retry scenarios with moderate concurrency risk.",
+    "issues_found": [
+      {
+        "severity": "Medium",
+        "file_path": "src/service/retry.py",
+        "issue": "No metrics added for lock contention path.",
+        "recommendation": "Add contention counter and alert threshold."
+      }
+    ],
+    "suggested_comments": [
+      {
+        "file_path": "src/service/retry.py",
+        "comment": "Consider emitting a metric when lock acquisition fails to aid production debugging."
+      }
+    ],
+    "final_recommendation": "Merge",
+    "reasoning": "Core behavior is correct; observability improvements can be follow-up work.",
+    "risk_level": "Medium"
+  }
+}
