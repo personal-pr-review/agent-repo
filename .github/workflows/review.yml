@@ -78,11 +78,11 @@ jobs:
       - name: Upload PR review document
         uses: actions/upload-artifact@v6
         with:
-          name: pr-review-docx-${{ inputs.repository }}-${{ inputs.pr_number }}
+          name: pr-review-docx-pr${{ inputs.pr_number }}-run${{ github.run_id }}
           path: agent-repo/artifacts/pr_review_report.docx
 
       - name: Upload structured JSON output
         uses: actions/upload-artifact@v6
         with:
-          name: pr-review-json-${{ inputs.repository }}-${{ inputs.pr_number }}
+          name: pr-review-json-pr${{ inputs.pr_number }}-run${{ github.run_id }}
           path: agent-repo/artifacts/review_output.json
