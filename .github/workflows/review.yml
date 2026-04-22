@@ -23,11 +23,10 @@ on:
         description: PR head commit SHA
         required: true
         type: string
+    secrets:
       github_token:
         description: GitHub token for API access
         required: true
-        type: string
-    secrets:
       LLM_API_KEY:
         description: API key for PwC OpenAI-compatible endpoint
         required: true
@@ -58,7 +57,7 @@ jobs:
 
       - name: Run PR review pipeline
         env:
-          GITHUB_TOKEN: ${{ inputs.github_token }}
+          GITHUB_TOKEN: ${{ secrets.github_token }}
           LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
           LLM_API_URL: ${{ env.LLM_API_URL }}
           LLM_MODEL: ${{ env.LLM_MODEL }}
