@@ -36,6 +36,7 @@ def main() -> int:
             github_client=github_client,
             llm_client=llm_client,
             prompts_dir=Path("src/pr_review/prompt_templates"),
+            template_path=Path("templates/Detailed_PR_Review_Template.docx"),
         )
 
         output_docx_path = Path("artifacts/pr_review_report.docx")

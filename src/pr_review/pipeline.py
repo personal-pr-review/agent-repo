@@ -11,11 +11,17 @@ from .review_agent import ReviewAgent
 
 
 class PRReviewPipeline:
-    def __init__(self, github_client: GitHubClient, llm_client: LLMClient, prompts_dir: Path) -> None:
+    def __init__(
+        self,
+        github_client: GitHubClient,
+        llm_client: LLMClient,
+        prompts_dir: Path,
+        template_path: Path,
+    ) -> None:
         self._github_client = github_client
         self._comparison_agent = ComparisonAgent(llm_client, prompts_dir / "comparison_prompt.txt")
         self._review_agent = ReviewAgent(llm_client, prompts_dir / "review_prompt.txt")
-        self._docx_generator = DocxGenerator()
+        self._docx_generator = DocxGenerator(template_path=template_path)
 
     def run(
         self,
