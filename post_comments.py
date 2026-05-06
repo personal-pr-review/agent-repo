@@ -63,7 +63,14 @@ def post_comments_from_payload(
     github_client = GitHubClient(token)
     pr = github_client.get_pull_request(repository, pr_number)
     pr_head_sha = ((pr.get("head") or {}).get("sha") or "").strip()
+    pr_node_id = str(pr.get("node_id", "")).strip()
     review_commit_sha = pr_head_sha or commit_sha
+    print(
+        "PR comment context: "
+        f"repository={repository}, pr_number={pr_number}, "
+        f"workflow_commit_sha={commit_sha}, live_pr_head_sha={review_commit_sha}, "
+        f"pr_node_id_present={bool(pr_node_id)}"
+    )
 
     review_result = payload.get("review_result", {})
     comments = review_result.get("suggested_comments", [])
@@ -77,6 +84,7 @@ def post_comments_from_payload(
         repository=repository,
         pr_number=pr_number,
         commit_sha=review_commit_sha,
+        pull_request_node_id=pr_node_id,
         comments=comments,
         valid_lines_by_file=valid_lines_by_file,
         diff_positions_by_file=diff_positions_by_file,

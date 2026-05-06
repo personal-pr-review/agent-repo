@@ -95,6 +95,42 @@ class GitHubClient:
         }
         return self._request("POST", url, json=payload)
 
+    def create_pull_request_review_thread(
+        self,
+        pull_request_node_id: str,
+        path: str,
+        line: int,
+        side: str,
+        body: str,
+    ) -> dict[str, Any]:
+        url = "https://api.github.com/graphql"
+        query = """
+        mutation AddReviewThread($input: AddPullRequestReviewThreadInput!) {
+          addPullRequestReviewThread(input: $input) {
+            thread {
+              id
+            }
+          }
+        }
+        """
+        payload = {
+            "query": query,
+            "variables": {
+                "input": {
+                    "pullRequestId": pull_request_node_id,
+                    "path": path,
+                    "line": line,
+                    "side": side,
+                    "body": body,
+                }
+            },
+        }
+        result = self._request("POST", url, json=payload)
+        errors = result.get("errors") if isinstance(result, dict) else None
+        if errors:
+            raise GitHubApiError(f"GitHub GraphQL error: {errors}")
+        return result
+
     def create_issue_comment(self, repository: str, issue_number: int, body: str) -> dict[str, Any]:
         url = f"https://api.github.com/repos/{repository}/issues/{issue_number}/comments"
         return self._request("POST", url, json={"body": body})

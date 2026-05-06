@@ -14,6 +14,7 @@ class PRCommentPoster:
         repository: str,
         pr_number: int,
         commit_sha: str,
+        pull_request_node_id: str,
         comments: list[dict[str, Any]],
         valid_lines_by_file: dict[str, set[int]],
         diff_positions_by_file: dict[str, dict[int, int]],
@@ -39,6 +40,7 @@ class PRCommentPoster:
             repository=repository,
             pr_number=pr_number,
             commit_sha=commit_sha,
+            pull_request_node_id=pull_request_node_id,
             ready_comments=ready_comments,
             fallback_comments=fallback_comments,
         )
@@ -59,11 +61,34 @@ class PRCommentPoster:
         repository: str,
         pr_number: int,
         commit_sha: str,
+        pull_request_node_id: str,
         ready_comments: list[dict[str, Any]],
         fallback_comments: list[dict[str, Any]],
     ) -> list[dict[str, Any]]:
         if not ready_comments:
             return []
+
+        posted: list[dict[str, Any]] = []
+        rest_ready_comments: list[dict[str, Any]] = []
+        for item in ready_comments:
+            if not pull_request_node_id:
+                rest_ready_comments.append(item)
+                continue
+
+            try:
+                self._github_client.create_pull_request_review_thread(
+                    pull_request_node_id=pull_request_node_id,
+                    path=item["file_path"],
+                    line=item["line"],
+                    side=item["side"],
+                    body=item["body"],
+                )
+                posted.append({**item, "posted_via": "graphql_review_thread"})
+            except Exception as exc:
+                rest_ready_comments.append({**item, "graphql_error": str(exc)})
+
+        if not rest_ready_comments:
+            return posted
 
         review_comments = [
             {
@@ -72,7 +97,7 @@ class PRCommentPoster:
                 "side": item["side"],
                 "body": item["body"],
             }
-            for item in ready_comments
+            for item in rest_ready_comments
         ]
 
         try:
@@ -82,7 +107,8 @@ class PRCommentPoster:
                 commit_sha=commit_sha,
                 comments=review_comments,
             )
-            return ready_comments
+            posted.extend(rest_ready_comments)
+            return posted
         except GitHubApiError as exc:
             print(f"Warning: batch PR review comment creation with line/side failed: {exc}")
 
@@ -92,7 +118,7 @@ class PRCommentPoster:
                 "position": item["position"],
                 "body": item["body"],
             }
-            for item in ready_comments
+            for item in rest_ready_comments
         ]
         try:
             self._github_client.create_pull_request_review(
@@ -101,12 +127,12 @@ class PRCommentPoster:
                 commit_sha=commit_sha,
                 comments=position_review_comments,
             )
-            return ready_comments
+            posted.extend(rest_ready_comments)
+            return posted
         except GitHubApiError as exc:
             print(f"Warning: batch PR review comment creation with position failed: {exc}")
 
-        posted: list[dict[str, Any]] = []
-        for item in ready_comments:
+        for item in rest_ready_comments:
             try:
                 self._github_client.create_pull_request_review_comment_by_position(
                     repository=repository,
@@ -133,7 +159,11 @@ class PRCommentPoster:
                     fallback_comments.append(
                         {
                             **item,
-                            "reason": f"review batch failed; position failed: {exc}; line/side failed: {fallback_exc}",
+                            "reason": (
+                                f"GraphQL failed: {item.get('graphql_error', 'not attempted')}; "
+                                f"review batch failed; position failed: {exc}; "
+                                f"line/side failed: {fallback_exc}"
+                            ),
                         }
                     )
             except Exception as exc:
