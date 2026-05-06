@@ -59,6 +59,11 @@ def post_comments_from_payload(
     pr_number: int,
     commit_sha: str,
 ) -> dict[str, Any]:
+    github_client = GitHubClient(token)
+    pr = github_client.get_pull_request(repository, pr_number)
+    pr_head_sha = ((pr.get("head") or {}).get("sha") or "").strip()
+    review_commit_sha = pr_head_sha or commit_sha
+
     review_result = payload.get("review_result", {})
     comments = review_result.get("suggested_comments", [])
     if not isinstance(comments, list):
@@ -72,11 +77,18 @@ def post_comments_from_payload(
         file_path = str(item.get("file_path", "")).strip()
         if not file_path:
             continue
+        added_lines = item.get("added_lines", [])
         valid_lines_by_file[file_path] = {
             int(line)
-            for line in item.get("commentable_lines", [])
+            for line in added_lines
             if isinstance(line, int) or str(line).isdigit()
         }
+        if not valid_lines_by_file[file_path]:
+            valid_lines_by_file[file_path] = {
+                int(line)
+                for line in item.get("commentable_lines", [])
+                if isinstance(line, int) or str(line).isdigit()
+            }
         raw_positions = item.get("diff_positions_by_line", {})
         if isinstance(raw_positions, dict):
             positions: dict[int, int] = {}
@@ -87,12 +99,11 @@ def post_comments_from_payload(
                     continue
             diff_positions_by_file[file_path] = positions
 
-    github_client = GitHubClient(token)
     poster = PRCommentPoster(github_client)
     return poster.post_review_comments(
         repository=repository,
         pr_number=pr_number,
-        commit_sha=commit_sha,
+        commit_sha=review_commit_sha,
         comments=comments,
         valid_lines_by_file=valid_lines_by_file,
         diff_positions_by_file=diff_positions_by_file,

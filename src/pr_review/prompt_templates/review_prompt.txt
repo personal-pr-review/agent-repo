@@ -37,7 +37,8 @@ Rules:
 - suggested_comments should be concise and directly usable in PR discussions.
 - Each suggested_comments item must target a concrete [LINE:nnn] marker from annotated_patch_diff.
 - Never guess line numbers from @@ hunk headers or from unannotated code.
-- The line value must be one of the file's valid_comment_lines values.
+- The line value must be one of the file's valid_comment_lines values; these are the safest added RIGHT-side lines for GitHub review comments.
+- Prefer commenting on added lines that introduce or expose the issue, even when the broader concern relates to nearby context.
 - diff_positions_by_line is provided for posting validation; do not invent or return positions.
 - Use side="RIGHT" for all line comments.
 - If an issue cannot be anchored to a [LINE:nnn] marker, omit it from suggested_comments and describe it in issues_found instead.

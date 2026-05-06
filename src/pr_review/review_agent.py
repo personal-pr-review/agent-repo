@@ -38,7 +38,7 @@ class ReviewAgent:
                     "semantic_impact": item.semantic_impact,
                     "risk_level": item.risk_level,
                     "annotated_patch_diff": item.annotated_patch,
-                    "valid_comment_lines": item.commentable_lines,
+                    "valid_comment_lines": item.added_lines or item.commentable_lines,
                     "added_lines": item.added_lines,
                     "diff_positions_by_line": item.diff_positions_by_line,
                 }
