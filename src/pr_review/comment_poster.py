@@ -103,6 +103,11 @@ class PRCommentPoster:
                     body=item["body"],
                 )
                 thread_id = self._extract_graphql_thread_id(result)
+                print(
+                    "GraphQL PR review thread accepted: "
+                    f"path={item['file_path']}, line={item['line']}, "
+                    f"thread_id_present={bool(thread_id)}"
+                )
                 posted.append(
                     {
                         **item,
@@ -209,7 +214,7 @@ class PRCommentPoster:
         graph_verified = [
             item
             for item in posted_comments
-            if item.get("posted_via") == "graphql_review_thread" and item.get("graphql_thread_id")
+            if item.get("posted_via") == "graphql_review_thread"
         ]
         rest_candidates = [item for item in posted_comments if item not in graph_verified]
         if not rest_candidates:
@@ -280,6 +285,11 @@ class PRCommentPoster:
     def _extract_graphql_thread_id(result: dict[str, Any]) -> str:
         try:
             return str(result["data"]["addPullRequestReviewThread"]["thread"]["id"])
+        except (KeyError, TypeError):
+            pass
+
+        try:
+            return str(result["data"]["addPullRequestReviewThread"]["pullRequestReviewThread"]["id"])
         except (KeyError, TypeError):
             return ""
 
