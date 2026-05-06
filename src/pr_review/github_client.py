@@ -40,6 +40,9 @@ class GitHubClient:
         url = f"https://api.github.com/repos/{repository}/pulls/{pr_number}"
         return self._request("GET", url)
 
+    def get_authenticated_user(self) -> dict[str, Any]:
+        return self._request("GET", "https://api.github.com/user")
+
     def create_pull_request_review_comment(
         self,
         repository: str,
@@ -175,6 +178,28 @@ class GitHubClient:
     def create_issue_comment(self, repository: str, issue_number: int, body: str) -> dict[str, Any]:
         url = f"https://api.github.com/repos/{repository}/issues/{issue_number}/comments"
         return self._request("POST", url, json={"body": body})
+
+    def list_pull_request_reviews(self, repository: str, pr_number: int) -> list[dict[str, Any]]:
+        reviews: list[dict[str, Any]] = []
+        page = 1
+        while True:
+            url = f"https://api.github.com/repos/{repository}/pulls/{pr_number}/reviews"
+            data = self._request("GET", url, params={"per_page": 100, "page": page})
+            if not data:
+                break
+            reviews.extend(data)
+            page += 1
+        return reviews
+
+    def submit_pull_request_review(
+        self,
+        repository: str,
+        pr_number: int,
+        review_id: int,
+        body: str = "Submitting pending automated PR review.",
+    ) -> dict[str, Any]:
+        url = f"https://api.github.com/repos/{repository}/pulls/{pr_number}/reviews/{review_id}/events"
+        return self._request("POST", url, json={"event": "COMMENT", "body": body})
 
     def list_pull_request_review_comments(self, repository: str, pr_number: int) -> list[dict[str, Any]]:
         comments: list[dict[str, Any]] = []
