@@ -87,39 +87,41 @@ class PRCommentPoster:
         if not ready_comments:
             return []
 
-        posted: list[dict[str, Any]] = []
         rest_ready_comments: list[dict[str, Any]] = []
-        for item in ready_comments:
-            if not pull_request_node_id:
-                rest_ready_comments.append(item)
-                continue
-
+        if pull_request_node_id:
+            graphql_review_threads = [
+                {
+                    "path": item["file_path"],
+                    "line": item["line"],
+                    "side": item["side"],
+                    "body": item["body"],
+                }
+                for item in ready_comments
+            ]
             try:
-                result = self._github_client.create_pull_request_review_thread(
+                result = self._github_client.create_pull_request_review_graphql(
                     pull_request_node_id=pull_request_node_id,
-                    path=item["file_path"],
-                    line=item["line"],
-                    side=item["side"],
-                    body=item["body"],
+                    commit_sha=commit_sha,
+                    comments=graphql_review_threads,
                 )
-                thread_id = self._extract_graphql_thread_id(result)
+                review_id = self._extract_graphql_review_id(result)
                 print(
-                    "GraphQL PR review thread accepted: "
-                    f"path={item['file_path']}, line={item['line']}, "
-                    f"thread_id_present={bool(thread_id)}"
+                    "GraphQL PR review submitted: "
+                    f"comments={len(ready_comments)}, review_id_present={bool(review_id)}"
                 )
-                posted.append(
+                return [
                     {
                         **item,
-                        "posted_via": "graphql_review_thread",
-                        "graphql_thread_id": thread_id,
+                        "posted_via": "graphql_submitted_review",
+                        "graphql_review_id": review_id,
                     }
-                )
+                    for item in ready_comments
+                ]
             except Exception as exc:
-                rest_ready_comments.append({**item, "graphql_error": str(exc)})
-
-        if not rest_ready_comments:
-            return posted
+                print(f"Warning: GraphQL submitted review failed: {exc}")
+                rest_ready_comments = [{**item, "graphql_error": str(exc)} for item in ready_comments]
+        else:
+            rest_ready_comments = list(ready_comments)
 
         review_comments = [
             {
@@ -138,8 +140,7 @@ class PRCommentPoster:
                 commit_sha=commit_sha,
                 comments=review_comments,
             )
-            posted.extend(rest_ready_comments)
-            return posted
+            return rest_ready_comments
         except GitHubApiError as exc:
             print(f"Warning: batch PR review comment creation with line/side failed: {exc}")
 
@@ -158,11 +159,11 @@ class PRCommentPoster:
                 commit_sha=commit_sha,
                 comments=position_review_comments,
             )
-            posted.extend(rest_ready_comments)
-            return posted
+            return rest_ready_comments
         except GitHubApiError as exc:
             print(f"Warning: batch PR review comment creation with position failed: {exc}")
 
+        posted: list[dict[str, Any]] = []
         for item in rest_ready_comments:
             try:
                 self._github_client.create_pull_request_review_comment_by_position(
@@ -214,7 +215,7 @@ class PRCommentPoster:
         graph_verified = [
             item
             for item in posted_comments
-            if item.get("posted_via") == "graphql_review_thread"
+            if item.get("posted_via") == "graphql_pending_thread"
         ]
         rest_candidates = [item for item in posted_comments if item not in graph_verified]
         if not rest_candidates:
@@ -224,17 +225,26 @@ class PRCommentPoster:
             )
             return graph_verified
 
-        time.sleep(2)
-        try:
-            github_comments = self._github_client.list_pull_request_review_comments(repository, pr_number)
-        except Exception as exc:
-            print(f"Warning: unable to verify PR review comments: {exc}")
-            return graph_verified
-
         verified: list[dict[str, Any]] = list(graph_verified)
-        for item in rest_candidates:
-            if self._matching_github_comment_exists(item, github_comments):
-                verified.append(item)
+        for attempt in range(1, 4):
+            time.sleep(2)
+            try:
+                github_comments = self._github_client.list_pull_request_review_comments(repository, pr_number)
+            except Exception as exc:
+                print(f"Warning: unable to verify PR review comments on attempt {attempt}: {exc}")
+                continue
+
+            verified_keys = {self._posted_comment_key(item) for item in verified}
+            for item in rest_candidates:
+                key = self._posted_comment_key(item)
+                if key in verified_keys:
+                    continue
+                if self._matching_github_comment_exists(item, github_comments):
+                    verified.append(item)
+                    verified_keys.add(key)
+
+            if len(verified) == len(posted_comments):
+                break
 
         print(
             "PR comment verification: "
@@ -282,14 +292,9 @@ class PRCommentPoster:
         )
 
     @staticmethod
-    def _extract_graphql_thread_id(result: dict[str, Any]) -> str:
+    def _extract_graphql_review_id(result: dict[str, Any]) -> str:
         try:
-            return str(result["data"]["addPullRequestReviewThread"]["thread"]["id"])
-        except (KeyError, TypeError):
-            pass
-
-        try:
-            return str(result["data"]["addPullRequestReviewThread"]["pullRequestReviewThread"]["id"])
+            return str(result["data"]["addPullRequestReview"]["pullRequestReview"]["id"])
         except (KeyError, TypeError):
             return ""
 

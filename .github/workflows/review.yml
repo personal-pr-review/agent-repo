@@ -50,6 +50,12 @@ jobs:
           ref: main
           path: agent-repo
 
+      - name: Show agent repo revision
+        working-directory: agent-repo
+        run: |
+          git rev-parse HEAD
+          grep -n "GraphQL PR review" src/pr_review/comment_poster.py || true
+
       - name: Set up Python
         uses: actions/setup-python@v6
         with:

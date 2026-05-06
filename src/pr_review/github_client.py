@@ -131,6 +131,47 @@ class GitHubClient:
             raise GitHubApiError(f"GitHub GraphQL error: {errors}")
         return result
 
+    def create_pull_request_review_graphql(
+        self,
+        pull_request_node_id: str,
+        commit_sha: str,
+        comments: list[dict[str, Any]],
+        body: str = "Automated PR review comments",
+    ) -> dict[str, Any]:
+        url = "https://api.github.com/graphql"
+        query = """
+        mutation AddReview($input: AddPullRequestReviewInput!) {
+          addPullRequestReview(input: $input) {
+            pullRequestReview {
+              id
+              state
+              url
+            }
+          }
+        }
+        """
+        input_payload: dict[str, Any] = {
+            "pullRequestId": pull_request_node_id,
+            "event": "COMMENT",
+            "body": body,
+            "threads": comments,
+        }
+        if commit_sha:
+            input_payload["commitOID"] = commit_sha
+
+        result = self._request(
+            "POST",
+            url,
+            json={
+                "query": query,
+                "variables": {"input": input_payload},
+            },
+        )
+        errors = result.get("errors") if isinstance(result, dict) else None
+        if errors:
+            raise GitHubApiError(f"GitHub GraphQL error: {errors}")
+        return result
+
     def create_issue_comment(self, repository: str, issue_number: int, body: str) -> dict[str, Any]:
         url = f"https://api.github.com/repos/{repository}/issues/{issue_number}/comments"
         return self._request("POST", url, json={"body": body})
