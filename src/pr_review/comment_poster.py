@@ -38,8 +38,8 @@ class PRCommentPoster:
             ready_comments.append({**normalized, "position": position})
 
         visible_after_pending_submit: list[dict[str, Any]] = []
-        submitted_pending_reviews = self._submit_pending_reviews(repository, pr_number)
-        if submitted_pending_reviews:
+        cleaned_pending_reviews = self._clean_pending_reviews(repository, pr_number)
+        if cleaned_pending_reviews:
             visible_after_pending_submit = self._verify_posted_comments(
                 repository,
                 pr_number,
@@ -78,7 +78,7 @@ class PRCommentPoster:
             )
 
         success_summary_posted = False
-        visible_comments = visible_after_pending_submit + verified_posted if submitted_pending_reviews else verified_posted
+        visible_comments = visible_after_pending_submit + verified_posted if cleaned_pending_reviews else verified_posted
         if visible_comments:
             success_summary_posted = self._post_success_summary(repository, pr_number, visible_comments)
 
@@ -92,44 +92,61 @@ class PRCommentPoster:
             "fallback_comments": len(fallback_comments),
             "fallback_posted": fallback_posted,
             "success_summary_posted": success_summary_posted,
-            "submitted_pending_reviews": submitted_pending_reviews,
+            "cleaned_pending_reviews": cleaned_pending_reviews,
         }
 
-    def _submit_pending_reviews(self, repository: str, pr_number: int) -> int:
+    def _clean_pending_reviews(self, repository: str, pr_number: int) -> int:
         try:
-            current_user = self._github_client.get_authenticated_user()
-            current_login = (current_user.get("login") or "").strip()
             reviews = self._github_client.list_pull_request_reviews(repository, pr_number)
         except Exception as exc:
             print(f"Warning: unable to inspect pending reviews: {exc}")
             return 0
 
-        submitted = 0
+        cleaned = 0
         for review in reviews:
             if str(review.get("state", "")).upper() != "PENDING":
-                continue
-
-            review_user = review.get("user") or {}
-            review_login = (review_user.get("login") or "").strip()
-            if current_login and review_login and review_login != current_login:
                 continue
 
             review_id = review.get("id")
             if not review_id:
                 continue
 
+            review_user = review.get("user") or {}
+            review_login = (review_user.get("login") or "unknown").strip()
             try:
-                self._github_client.submit_pull_request_review(
+                self._github_client.delete_pending_pull_request_review(
                     repository=repository,
                     pr_number=pr_number,
                     review_id=int(review_id),
                 )
-                submitted += 1
-                print(f"Submitted existing pending automated review: review_id={review_id}")
+                cleaned += 1
+                print(
+                    "Deleted stale pending PR review before posting new comments: "
+                    f"review_id={review_id}, user={review_login}"
+                )
             except Exception as exc:
-                print(f"Warning: failed to submit pending review {review_id}: {exc}")
+                print(
+                    "Warning: failed to delete pending PR review; trying to submit it: "
+                    f"review_id={review_id}, user={review_login}, error={exc}"
+                )
+                try:
+                    self._github_client.submit_pull_request_review(
+                        repository=repository,
+                        pr_number=pr_number,
+                        review_id=int(review_id),
+                    )
+                    cleaned += 1
+                    print(
+                        "Submitted existing pending PR review before posting new comments: "
+                        f"review_id={review_id}, user={review_login}"
+                    )
+                except Exception as submit_exc:
+                    print(
+                        "Warning: failed to submit pending PR review: "
+                        f"review_id={review_id}, user={review_login}, error={submit_exc}"
+                    )
 
-        return submitted
+        return cleaned
 
     def _post_ready_comments(
         self,

@@ -40,9 +40,6 @@ class GitHubClient:
         url = f"https://api.github.com/repos/{repository}/pulls/{pr_number}"
         return self._request("GET", url)
 
-    def get_authenticated_user(self) -> dict[str, Any]:
-        return self._request("GET", "https://api.github.com/user")
-
     def create_pull_request_review_comment(
         self,
         repository: str,
@@ -200,6 +197,15 @@ class GitHubClient:
     ) -> dict[str, Any]:
         url = f"https://api.github.com/repos/{repository}/pulls/{pr_number}/reviews/{review_id}/events"
         return self._request("POST", url, json={"event": "COMMENT", "body": body})
+
+    def delete_pending_pull_request_review(
+        self,
+        repository: str,
+        pr_number: int,
+        review_id: int,
+    ) -> dict[str, Any]:
+        url = f"https://api.github.com/repos/{repository}/pulls/{pr_number}/reviews/{review_id}"
+        return self._request("DELETE", url)
 
     def list_pull_request_review_comments(self, repository: str, pr_number: int) -> list[dict[str, Any]]:
         comments: list[dict[str, Any]] = []
