@@ -48,6 +48,10 @@ class ComparisonResult:
 @dataclass
 class ReviewResult:
     summary: str
+    purpose_of_pr: str = ""
+    summary_of_changes: str = ""
+    problem_being_solved: str = ""
+    expected_outcome: str = ""
     issues_found: list[dict[str, Any]] = field(default_factory=list)
     suggested_comments: list[dict[str, Any]] = field(default_factory=list)
     final_recommendation: str = "Merge"

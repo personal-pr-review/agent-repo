@@ -29,6 +29,7 @@ class DocxGenerator:
         self._fill_pr_metadata_table(document.tables[1], pr_metadata)
         self._fill_files_changed_table(document.tables[2], comparisons)
         self._fill_behavior_change_table(document.tables[3], comparisons)
+        self._fill_narrative_sections(document, pr_metadata, comparisons, review_result)
 
         output_path.parent.mkdir(parents=True, exist_ok=True)
         document.save(str(output_path))
@@ -115,3 +116,59 @@ class DocxGenerator:
                 paragraph.text = ""
             return
         cell.text = text
+
+    @staticmethod
+    def _fill_narrative_sections(
+        document: Document,
+        pr_metadata: PRMetadata,
+        comparisons: list[ComparisonResult],
+        review_result: ReviewResult,
+    ) -> None:
+        derived_summary = review_result.summary or "; ".join(
+            [item.change_summary for item in comparisons if item.change_summary][:3]
+        )
+        purpose = review_result.purpose_of_pr or f"This PR updates {pr_metadata.title}."
+        summary_of_changes = review_result.summary_of_changes or derived_summary
+        problem = review_result.problem_being_solved or derived_summary
+        expected = review_result.expected_outcome or "Expected behavior should align with intended PR outcomes."
+        risk = review_result.risk_level or "Low"
+        decision = review_result.final_recommendation or "Merge"
+        reasoning = review_result.reasoning or derived_summary
+
+        for paragraph in document.paragraphs:
+            text = paragraph.text
+            updated = text
+
+            updated = updated.replace("[Explain why this PR was created]", purpose)
+            updated = updated.replace("[Brief summary of key changes]", summary_of_changes)
+            updated = updated.replace("[Low / Medium / High]", risk)
+            updated = updated.replace("[Merge / Do Not Merge]", decision)
+
+            if updated.strip() == "Problem Being Solved:":
+                updated = f"Problem Being Solved: {problem}"
+            elif updated.startswith("Problem Being Solved:") and updated.strip() == "Problem Being Solved:":
+                updated = f"Problem Being Solved: {problem}"
+
+            if updated.strip() == "Expected Outcome:":
+                updated = f"Expected Outcome: {expected}"
+            elif updated.startswith("Expected Outcome:") and updated.strip() == "Expected Outcome:":
+                updated = f"Expected Outcome: {expected}"
+
+            if "Decision:" in updated and "Reasoning:" in updated:
+                updated = f"Decision: {decision}\nReasoning: {reasoning}"
+            elif updated.strip() == "Reasoning:":
+                updated = f"Reasoning: {reasoning}"
+            elif updated.startswith("Reasoning:") and updated.strip() == "Reasoning:":
+                updated = f"Reasoning: {reasoning}"
+
+            if updated != text:
+                DocxGenerator._set_paragraph_text(paragraph, updated)
+
+    @staticmethod
+    def _set_paragraph_text(paragraph, text: str) -> None:
+        if paragraph.runs:
+            paragraph.runs[0].text = text
+            for run in paragraph.runs[1:]:
+                run.text = ""
+            return
+        paragraph.text = text

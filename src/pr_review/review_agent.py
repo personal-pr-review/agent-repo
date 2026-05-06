@@ -49,6 +49,10 @@ class ReviewAgent:
 
         return ReviewResult(
             summary=str(result.get("summary", "")).strip(),
+            purpose_of_pr=str(result.get("purpose_of_pr", "")).strip(),
+            summary_of_changes=str(result.get("summary_of_changes", "")).strip(),
+            problem_being_solved=str(result.get("problem_being_solved", "")).strip(),
+            expected_outcome=str(result.get("expected_outcome", "")).strip(),
             issues_found=issues_found,
             suggested_comments=suggested_comments,
             final_recommendation=str(result.get("final_recommendation", "Merge")).strip() or "Merge",

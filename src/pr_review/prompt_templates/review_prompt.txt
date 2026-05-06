@@ -6,6 +6,10 @@ Given PR metadata and all per-file comparison outputs, produce a final review.
 Return ONLY a JSON object with this exact schema:
 {
   "summary": "string",
+  "purpose_of_pr": "string",
+  "summary_of_changes": "string",
+  "problem_being_solved": "string",
+  "expected_outcome": "string",
   "issues_found": [
     {
       "severity": "Low|Medium|High",
@@ -29,4 +33,6 @@ Rules:
 - Prioritize correctness, safety, and maintainability.
 - final_recommendation should be "Do Not Merge" when unresolved high-risk issues exist.
 - suggested_comments should be concise and directly usable in PR discussions.
+- purpose_of_pr, summary_of_changes, problem_being_solved, and expected_outcome must be non-empty.
+- If information is incomplete, infer responsibly from PR title, metadata, and file-level comparisons.
 - Return valid JSON only.
