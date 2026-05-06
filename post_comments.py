@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from src.pr_review.comment_poster import PRCommentPoster
+from src.pr_review.diff_utils import annotate_patch_with_target_lines
 from src.pr_review.github_client import GitHubClient
 
 
@@ -69,35 +70,7 @@ def post_comments_from_payload(
     if not isinstance(comments, list):
         comments = []
 
-    valid_lines_by_file: dict[str, set[int]] = {}
-    diff_positions_by_file: dict[str, dict[int, int]] = {}
-    for item in payload.get("comparison_results", []):
-        if not isinstance(item, dict):
-            continue
-        file_path = str(item.get("file_path", "")).strip()
-        if not file_path:
-            continue
-        added_lines = item.get("added_lines", [])
-        valid_lines_by_file[file_path] = {
-            int(line)
-            for line in added_lines
-            if isinstance(line, int) or str(line).isdigit()
-        }
-        if not valid_lines_by_file[file_path]:
-            valid_lines_by_file[file_path] = {
-                int(line)
-                for line in item.get("commentable_lines", [])
-                if isinstance(line, int) or str(line).isdigit()
-            }
-        raw_positions = item.get("diff_positions_by_line", {})
-        if isinstance(raw_positions, dict):
-            positions: dict[int, int] = {}
-            for line, position in raw_positions.items():
-                try:
-                    positions[int(line)] = int(position)
-                except (TypeError, ValueError):
-                    continue
-            diff_positions_by_file[file_path] = positions
+    valid_lines_by_file, diff_positions_by_file = build_live_diff_maps(github_client, repository, pr_number)
 
     poster = PRCommentPoster(github_client)
     return poster.post_review_comments(
@@ -108,6 +81,35 @@ def post_comments_from_payload(
         valid_lines_by_file=valid_lines_by_file,
         diff_positions_by_file=diff_positions_by_file,
     )
+
+
+def build_live_diff_maps(
+    github_client: GitHubClient,
+    repository: str,
+    pr_number: int,
+) -> tuple[dict[str, set[int]], dict[str, dict[int, int]]]:
+    valid_lines_by_file: dict[str, set[int]] = {}
+    diff_positions_by_file: dict[str, dict[int, int]] = {}
+
+    for file_data in github_client.get_pull_request_files(repository, pr_number):
+        path = str(file_data.get("filename", "")).strip()
+        if not path:
+            continue
+
+        status = str(file_data.get("status", "")).strip()
+        if status == "removed":
+            continue
+
+        annotated_diff = annotate_patch_with_target_lines(file_data.get("patch", "") or "")
+        valid_lines_by_file[path] = set(annotated_diff.added_lines or annotated_diff.commentable_lines)
+        diff_positions_by_file[path] = annotated_diff.diff_positions_by_line
+
+    print(
+        "Live PR comment map: "
+        f"files={len(valid_lines_by_file)}, "
+        f"commentable_lines={sum(len(lines) for lines in valid_lines_by_file.values())}"
+    )
+    return valid_lines_by_file, diff_positions_by_file
 
 
 if __name__ == "__main__":

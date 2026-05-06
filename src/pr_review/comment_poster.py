@@ -18,7 +18,7 @@ class PRCommentPoster:
         valid_lines_by_file: dict[str, set[int]],
         diff_positions_by_file: dict[str, dict[int, int]],
     ) -> dict[str, Any]:
-        posted: list[dict[str, Any]] = []
+        ready_comments: list[dict[str, Any]] = []
         fallback_comments: list[dict[str, Any]] = []
 
         for comment in comments:
@@ -33,38 +33,15 @@ class PRCommentPoster:
                 fallback_comments.append({**normalized, "reason": "No diff position found for line."})
                 continue
 
-            try:
-                self._github_client.create_pull_request_review_comment_by_position(
-                    repository=repository,
-                    pr_number=pr_number,
-                    commit_sha=commit_sha,
-                    path=normalized["file_path"],
-                    position=position,
-                    body=normalized["body"],
-                )
-                posted.append({**normalized, "position": position})
-            except GitHubApiError as exc:
-                try:
-                    self._github_client.create_pull_request_review_comment(
-                        repository=repository,
-                        pr_number=pr_number,
-                        commit_sha=commit_sha,
-                        path=normalized["file_path"],
-                        line=normalized["line"],
-                        side=normalized["side"],
-                        body=normalized["body"],
-                    )
-                    posted.append({**normalized, "position": position, "line_side_fallback": True})
-                except Exception as fallback_exc:
-                    fallback_comments.append(
-                        {
-                            **normalized,
-                            "position": position,
-                            "reason": f"position failed: {exc}; line/side failed: {fallback_exc}",
-                        }
-                    )
-            except Exception as exc:
-                fallback_comments.append({**normalized, "reason": f"Unexpected error: {exc}"})
+            ready_comments.append({**normalized, "position": position})
+
+        posted = self._post_ready_comments(
+            repository=repository,
+            pr_number=pr_number,
+            commit_sha=commit_sha,
+            ready_comments=ready_comments,
+            fallback_comments=fallback_comments,
+        )
 
         fallback_posted = False
         if fallback_comments:
@@ -76,6 +53,93 @@ class PRCommentPoster:
             "fallback_comments": len(fallback_comments),
             "fallback_posted": fallback_posted,
         }
+
+    def _post_ready_comments(
+        self,
+        repository: str,
+        pr_number: int,
+        commit_sha: str,
+        ready_comments: list[dict[str, Any]],
+        fallback_comments: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        if not ready_comments:
+            return []
+
+        review_comments = [
+            {
+                "path": item["file_path"],
+                "line": item["line"],
+                "side": item["side"],
+                "body": item["body"],
+            }
+            for item in ready_comments
+        ]
+
+        try:
+            self._github_client.create_pull_request_review(
+                repository=repository,
+                pr_number=pr_number,
+                commit_sha=commit_sha,
+                comments=review_comments,
+            )
+            return ready_comments
+        except GitHubApiError as exc:
+            print(f"Warning: batch PR review comment creation with line/side failed: {exc}")
+
+        position_review_comments = [
+            {
+                "path": item["file_path"],
+                "position": item["position"],
+                "body": item["body"],
+            }
+            for item in ready_comments
+        ]
+        try:
+            self._github_client.create_pull_request_review(
+                repository=repository,
+                pr_number=pr_number,
+                commit_sha=commit_sha,
+                comments=position_review_comments,
+            )
+            return ready_comments
+        except GitHubApiError as exc:
+            print(f"Warning: batch PR review comment creation with position failed: {exc}")
+
+        posted: list[dict[str, Any]] = []
+        for item in ready_comments:
+            try:
+                self._github_client.create_pull_request_review_comment_by_position(
+                    repository=repository,
+                    pr_number=pr_number,
+                    commit_sha=commit_sha,
+                    path=item["file_path"],
+                    position=item["position"],
+                    body=item["body"],
+                )
+                posted.append(item)
+            except GitHubApiError as exc:
+                try:
+                    self._github_client.create_pull_request_review_comment(
+                        repository=repository,
+                        pr_number=pr_number,
+                        commit_sha=commit_sha,
+                        path=item["file_path"],
+                        line=item["line"],
+                        side=item["side"],
+                        body=item["body"],
+                    )
+                    posted.append({**item, "line_side_fallback": True})
+                except Exception as fallback_exc:
+                    fallback_comments.append(
+                        {
+                            **item,
+                            "reason": f"review batch failed; position failed: {exc}; line/side failed: {fallback_exc}",
+                        }
+                    )
+            except Exception as exc:
+                fallback_comments.append({**item, "reason": f"Unexpected error: {exc}"})
+
+        return posted
 
     @staticmethod
     def _normalize_comment(comment: dict[str, Any]) -> dict[str, Any]:
@@ -124,7 +188,9 @@ class PRCommentPoster:
         for item in fallback_comments[:20]:
             location = item["file_path"] or "unknown file"
             line = item["line"] or "unknown line"
+            position = item.get("position", "unknown position")
             body_lines.append(f"- `{location}:{line}`: {item['body']}")
+            body_lines.append(f"  Diff position: {position}")
             body_lines.append(f"  Reason: {item['reason']}")
 
         if len(fallback_comments) > 20:

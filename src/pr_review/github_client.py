@@ -78,6 +78,23 @@ class GitHubClient:
         }
         return self._request("POST", url, json=payload)
 
+    def create_pull_request_review(
+        self,
+        repository: str,
+        pr_number: int,
+        commit_sha: str,
+        comments: list[dict[str, Any]],
+        body: str = "Automated PR review comments",
+    ) -> dict[str, Any]:
+        url = f"https://api.github.com/repos/{repository}/pulls/{pr_number}/reviews"
+        payload = {
+            "commit_id": commit_sha,
+            "event": "COMMENT",
+            "body": body,
+            "comments": comments,
+        }
+        return self._request("POST", url, json=payload)
+
     def create_issue_comment(self, repository: str, issue_number: int, body: str) -> dict[str, Any]:
         url = f"https://api.github.com/repos/{repository}/issues/{issue_number}/comments"
         return self._request("POST", url, json={"body": body})
