@@ -12,8 +12,11 @@ class PRFileContext:
     deletions: int
     changes: int
     patch: str
+    annotated_patch: str
     base_content: str
     head_content: str
+    commentable_lines: list[int] = field(default_factory=list)
+    added_lines: list[int] = field(default_factory=list)
 
 
 @dataclass
@@ -40,6 +43,9 @@ class ComparisonResult:
     change_type: str
     change_summary: str
     behavioral_change: str
+    annotated_patch: str = ""
+    commentable_lines: list[int] = field(default_factory=list)
+    added_lines: list[int] = field(default_factory=list)
     risk_flags: list[str] = field(default_factory=list)
     semantic_impact: str = ""
     risk_level: str = "Low"
@@ -64,6 +70,7 @@ class PipelineOutput:
     pr_metadata: PRMetadata
     comparison_results: list[ComparisonResult]
     review_result: ReviewResult
+    comment_posting_result: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

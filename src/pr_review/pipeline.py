@@ -44,13 +44,13 @@ class PRReviewPipeline:
         comparison_results = [self._comparison_agent.run_for_file(item) for item in file_contexts]
         review_result = self._review_agent.run(pr_metadata, comparison_results)
 
+        self._docx_generator.generate(output_docx_path, pr_metadata, comparison_results, review_result)
+
         output = PipelineOutput(
             pr_metadata=pr_metadata,
             comparison_results=comparison_results,
             review_result=review_result,
         )
-
-        self._docx_generator.generate(output_docx_path, pr_metadata, comparison_results, review_result)
 
         output_json_path.parent.mkdir(parents=True, exist_ok=True)
         output_json_path.write_text(

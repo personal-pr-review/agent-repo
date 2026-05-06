@@ -21,6 +21,15 @@
       "change_type": "modified",
       "change_summary": "Adds key-based lock and retry guard for duplicate requests.",
       "behavioral_change": "Duplicate requests now return cached response instead of reprocessing.",
+      "annotated_patch": "@@ -10,2 +10,3 @@\n[LINE:10]  def retry_request(request):\n[LINE:11] +    acquire_idempotency_lock(request.key)\n[LINE:12]      return process(request)",
+      "commentable_lines": [
+        10,
+        11,
+        12
+      ],
+      "added_lines": [
+        11
+      ],
       "risk_flags": [
         "Lock timeout could surface false negatives under heavy load"
       ],
@@ -41,11 +50,14 @@
     "suggested_comments": [
       {
         "file_path": "src/service/retry.py",
-        "comment": "Consider emitting a metric when lock acquisition fails to aid production debugging."
+        "line": 11,
+        "side": "RIGHT",
+        "body": "Consider emitting a metric when lock acquisition fails to aid production debugging."
       }
     ],
     "final_recommendation": "Merge",
     "reasoning": "Core behavior is correct; observability improvements can be follow-up work.",
     "risk_level": "Medium"
-  }
+  },
+  "comment_posting_result": {}
 }

@@ -39,7 +39,8 @@ jobs:
   run-pr-review:
     permissions:
       contents: read
-      pull-requests: read
+      pull-requests: write
+      issues: write
     runs-on: ubuntu-latest
     steps:
       - name: Checkout centralized agent repo
@@ -80,3 +81,15 @@ jobs:
         with:
           name: pr-review-docx-pr${{ inputs.pr_number }}-run${{ github.run_id }}
           path: agent-repo/artifacts/pr_review_report.docx
+
+      - name: Post PR review comments
+        working-directory: agent-repo
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.repo_token }}
+        run: |
+          python post_comments.py \
+            --repository "${{ inputs.repository }}" \
+            --pr-number "${{ inputs.pr_number }}" \
+            --commit-sha "${{ inputs.commit_sha }}" \
+            --review-output "artifacts/review_output.json"

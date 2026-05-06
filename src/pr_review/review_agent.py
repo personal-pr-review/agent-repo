@@ -37,6 +37,9 @@ class ReviewAgent:
                     "risk_flags": item.risk_flags,
                     "semantic_impact": item.semantic_impact,
                     "risk_level": item.risk_level,
+                    "annotated_patch_diff": item.annotated_patch,
+                    "valid_comment_lines": item.commentable_lines,
+                    "added_lines": item.added_lines,
                 }
                 for item in comparisons
             ],
@@ -45,7 +48,7 @@ class ReviewAgent:
         result = self._llm_client.json_chat(self._prompt, payload)
 
         issues_found = self._normalize_list_of_dicts(result.get("issues_found", []))
-        suggested_comments = self._normalize_list_of_dicts(result.get("suggested_comments", []))
+        suggested_comments = self._normalize_suggested_comments(result.get("suggested_comments", []))
 
         return ReviewResult(
             summary=str(result.get("summary", "")).strip(),
@@ -69,3 +72,30 @@ class ReviewAgent:
             if isinstance(item, dict):
                 output.append(item)
         return output
+
+    @staticmethod
+    def _normalize_suggested_comments(value: Any) -> list[dict[str, Any]]:
+        if not isinstance(value, list):
+            return []
+
+        comments: list[dict[str, Any]] = []
+        for item in value:
+            if not isinstance(item, dict):
+                continue
+
+            raw_line = item.get("line")
+            try:
+                line = int(raw_line)
+            except (TypeError, ValueError):
+                line = 0
+
+            body = str(item.get("body") or item.get("comment") or "").strip()
+            comments.append(
+                {
+                    "file_path": str(item.get("file_path", "")).strip(),
+                    "line": line,
+                    "side": str(item.get("side", "RIGHT")).strip().upper() or "RIGHT",
+                    "body": body,
+                }
+            )
+        return comments

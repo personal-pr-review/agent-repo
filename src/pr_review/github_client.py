@@ -5,6 +5,7 @@ from typing import Any
 
 import requests
 
+from .diff_utils import annotate_patch_with_target_lines
 from .models import PRFileContext, PRMetadata
 
 
@@ -38,6 +39,30 @@ class GitHubClient:
     def get_pull_request(self, repository: str, pr_number: int) -> dict[str, Any]:
         url = f"https://api.github.com/repos/{repository}/pulls/{pr_number}"
         return self._request("GET", url)
+
+    def create_pull_request_review_comment(
+        self,
+        repository: str,
+        pr_number: int,
+        commit_sha: str,
+        path: str,
+        line: int,
+        side: str,
+        body: str,
+    ) -> dict[str, Any]:
+        url = f"https://api.github.com/repos/{repository}/pulls/{pr_number}/comments"
+        payload = {
+            "body": body,
+            "commit_id": commit_sha,
+            "path": path,
+            "line": line,
+            "side": side,
+        }
+        return self._request("POST", url, json=payload)
+
+    def create_issue_comment(self, repository: str, issue_number: int, body: str) -> dict[str, Any]:
+        url = f"https://api.github.com/repos/{repository}/issues/{issue_number}/comments"
+        return self._request("POST", url, json={"body": body})
 
     def get_pull_request_files(self, repository: str, pr_number: int) -> list[dict[str, Any]]:
         files: list[dict[str, Any]] = []
@@ -104,6 +129,8 @@ class GitHubClient:
         for file_data in files:
             path = file_data.get("filename", "")
             status = file_data.get("status", "modified")
+            patch = file_data.get("patch", "") or ""
+            annotated_diff = annotate_patch_with_target_lines(patch)
 
             base_content = ""
             head_content = ""
@@ -119,7 +146,10 @@ class GitHubClient:
                     additions=int(file_data.get("additions", 0) or 0),
                     deletions=int(file_data.get("deletions", 0) or 0),
                     changes=int(file_data.get("changes", 0) or 0),
-                    patch=file_data.get("patch", "") or "",
+                    patch=patch,
+                    annotated_patch=annotated_diff.text,
+                    commentable_lines=annotated_diff.commentable_lines,
+                    added_lines=annotated_diff.added_lines,
                     base_content=base_content,
                     head_content=head_content,
                 )
