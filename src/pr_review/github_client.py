@@ -135,6 +135,18 @@ class GitHubClient:
         url = f"https://api.github.com/repos/{repository}/issues/{issue_number}/comments"
         return self._request("POST", url, json={"body": body})
 
+    def list_pull_request_review_comments(self, repository: str, pr_number: int) -> list[dict[str, Any]]:
+        comments: list[dict[str, Any]] = []
+        page = 1
+        while True:
+            url = f"https://api.github.com/repos/{repository}/pulls/{pr_number}/comments"
+            data = self._request("GET", url, params={"per_page": 100, "page": page})
+            if not data:
+                break
+            comments.extend(data)
+            page += 1
+        return comments
+
     def get_pull_request_files(self, repository: str, pr_number: int) -> list[dict[str, Any]]:
         files: list[dict[str, Any]] = []
         page = 1
