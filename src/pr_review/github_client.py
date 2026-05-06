@@ -95,6 +95,22 @@ class GitHubClient:
         }
         return self._request("POST", url, json=payload)
 
+    def create_pending_pull_request_review(
+        self,
+        repository: str,
+        pr_number: int,
+        commit_sha: str,
+        comments: list[dict[str, Any]],
+        body: str = "Automated PR review comments",
+    ) -> dict[str, Any]:
+        url = f"https://api.github.com/repos/{repository}/pulls/{pr_number}/reviews"
+        payload = {
+            "commit_id": commit_sha,
+            "body": body,
+            "comments": comments,
+        }
+        return self._request("POST", url, json=payload)
+
     def create_pull_request_review_thread(
         self,
         pull_request_node_id: str,

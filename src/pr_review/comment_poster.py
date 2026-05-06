@@ -160,7 +160,54 @@ class PRCommentPoster:
         if not ready_comments:
             return []
 
-        rest_ready_comments: list[dict[str, Any]] = []
+        attempt_errors: list[str] = []
+        rest_ready_comments = list(ready_comments)
+
+        position_review_comments = [
+            {
+                "path": item["file_path"],
+                "position": item["position"],
+                "body": item["body"],
+            }
+            for item in rest_ready_comments
+        ]
+        try:
+            return self._create_and_submit_pending_review(
+                repository=repository,
+                pr_number=pr_number,
+                commit_sha=commit_sha,
+                review_comments=position_review_comments,
+                source_comments=rest_ready_comments,
+                strategy="position",
+            )
+        except Exception as exc:
+            message = f"pending review with position failed: {exc}"
+            attempt_errors.append(message)
+            print(f"Warning: {message}")
+
+        review_comments = [
+            {
+                "path": item["file_path"],
+                "line": item["line"],
+                "side": item["side"],
+                "body": item["body"],
+            }
+            for item in rest_ready_comments
+        ]
+        try:
+            return self._create_and_submit_pending_review(
+                repository=repository,
+                pr_number=pr_number,
+                commit_sha=commit_sha,
+                review_comments=review_comments,
+                source_comments=rest_ready_comments,
+                strategy="line_side",
+            )
+        except Exception as exc:
+            message = f"pending review with line/side failed: {exc}"
+            attempt_errors.append(message)
+            print(f"Warning: {message}")
+
         if pull_request_node_id:
             graphql_review_threads = [
                 {
@@ -169,7 +216,7 @@ class PRCommentPoster:
                     "side": item["side"],
                     "body": item["body"],
                 }
-                for item in ready_comments
+                for item in rest_ready_comments
             ]
             try:
                 result = self._github_client.create_pull_request_review_graphql(
@@ -188,23 +235,12 @@ class PRCommentPoster:
                         "posted_via": "graphql_submitted_review",
                         "graphql_review_id": review_id,
                     }
-                    for item in ready_comments
+                    for item in rest_ready_comments
                 ]
             except Exception as exc:
-                print(f"Warning: GraphQL submitted review failed: {exc}")
-                rest_ready_comments = [{**item, "graphql_error": str(exc)} for item in ready_comments]
-        else:
-            rest_ready_comments = list(ready_comments)
-
-        review_comments = [
-            {
-                "path": item["file_path"],
-                "line": item["line"],
-                "side": item["side"],
-                "body": item["body"],
-            }
-            for item in rest_ready_comments
-        ]
+                message = f"GraphQL submitted review failed: {exc}"
+                attempt_errors.append(message)
+                print(f"Warning: {message}")
 
         try:
             self._github_client.create_pull_request_review(
@@ -213,18 +249,12 @@ class PRCommentPoster:
                 commit_sha=commit_sha,
                 comments=review_comments,
             )
-            return rest_ready_comments
+            return [{**item, "posted_via": "rest_submitted_review_line_side"} for item in rest_ready_comments]
         except GitHubApiError as exc:
-            print(f"Warning: batch PR review comment creation with line/side failed: {exc}")
+            message = f"submitted review with line/side failed: {exc}"
+            attempt_errors.append(message)
+            print(f"Warning: {message}")
 
-        position_review_comments = [
-            {
-                "path": item["file_path"],
-                "position": item["position"],
-                "body": item["body"],
-            }
-            for item in rest_ready_comments
-        ]
         try:
             self._github_client.create_pull_request_review(
                 repository=repository,
@@ -232,9 +262,11 @@ class PRCommentPoster:
                 commit_sha=commit_sha,
                 comments=position_review_comments,
             )
-            return rest_ready_comments
+            return [{**item, "posted_via": "rest_submitted_review_position"} for item in rest_ready_comments]
         except GitHubApiError as exc:
-            print(f"Warning: batch PR review comment creation with position failed: {exc}")
+            message = f"submitted review with position failed: {exc}"
+            attempt_errors.append(message)
+            print(f"Warning: {message}")
 
         posted: list[dict[str, Any]] = []
         for item in rest_ready_comments:
@@ -247,8 +279,9 @@ class PRCommentPoster:
                     position=item["position"],
                     body=item["body"],
                 )
-                posted.append(item)
+                posted.append({**item, "posted_via": "rest_individual_position"})
             except GitHubApiError as exc:
+                position_error = str(exc)
                 try:
                     self._github_client.create_pull_request_review_comment(
                         repository=repository,
@@ -259,22 +292,84 @@ class PRCommentPoster:
                         side=item["side"],
                         body=item["body"],
                     )
-                    posted.append({**item, "line_side_fallback": True})
+                    posted.append({**item, "posted_via": "rest_individual_line_side"})
                 except Exception as fallback_exc:
+                    all_errors = attempt_errors + [
+                        f"individual position failed: {position_error}",
+                        f"individual line/side failed: {fallback_exc}",
+                    ]
                     fallback_comments.append(
                         {
                             **item,
-                            "reason": (
-                                f"GraphQL failed: {item.get('graphql_error', 'not attempted')}; "
-                                f"review batch failed; position failed: {exc}; "
-                                f"line/side failed: {fallback_exc}"
-                            ),
+                            "reason": "; ".join(all_errors),
                         }
                     )
             except Exception as exc:
                 fallback_comments.append({**item, "reason": f"Unexpected error: {exc}"})
 
         return posted
+
+    def _create_and_submit_pending_review(
+        self,
+        repository: str,
+        pr_number: int,
+        commit_sha: str,
+        review_comments: list[dict[str, Any]],
+        source_comments: list[dict[str, Any]],
+        strategy: str,
+    ) -> list[dict[str, Any]]:
+        pending_review = self._github_client.create_pending_pull_request_review(
+            repository=repository,
+            pr_number=pr_number,
+            commit_sha=commit_sha,
+            comments=review_comments,
+        )
+        review_id = self._extract_rest_review_id(pending_review)
+        if not review_id:
+            raise GitHubApiError("GitHub created a pending review response without an id.")
+
+        print(
+            "Created pending PR review with inline comments: "
+            f"review_id={review_id}, strategy={strategy}, comments={len(source_comments)}"
+        )
+
+        try:
+            self._github_client.submit_pull_request_review(
+                repository=repository,
+                pr_number=pr_number,
+                review_id=review_id,
+                body="Automated PR review comments",
+            )
+        except Exception:
+            self._delete_failed_pending_review(repository, pr_number, review_id)
+            raise
+
+        print(
+            "Submitted pending PR review with inline comments: "
+            f"review_id={review_id}, strategy={strategy}, comments={len(source_comments)}"
+        )
+        return [
+            {
+                **item,
+                "posted_via": f"rest_pending_review_{strategy}",
+                "review_id": review_id,
+            }
+            for item in source_comments
+        ]
+
+    def _delete_failed_pending_review(self, repository: str, pr_number: int, review_id: int) -> None:
+        try:
+            self._github_client.delete_pending_pull_request_review(
+                repository=repository,
+                pr_number=pr_number,
+                review_id=review_id,
+            )
+            print(f"Deleted failed pending PR review: review_id={review_id}")
+        except Exception as cleanup_exc:
+            print(
+                "Warning: failed to delete pending PR review after submit failure: "
+                f"review_id={review_id}, error={cleanup_exc}"
+            )
 
     def _verify_posted_comments(
         self,
@@ -370,6 +465,13 @@ class PRCommentPoster:
             return str(result["data"]["addPullRequestReview"]["pullRequestReview"]["id"])
         except (KeyError, TypeError):
             return ""
+
+    @staticmethod
+    def _extract_rest_review_id(result: dict[str, Any]) -> int:
+        try:
+            return int(result.get("id", 0) or 0)
+        except (AttributeError, TypeError, ValueError):
+            return 0
 
     @staticmethod
     def _normalize_comment(comment: dict[str, Any]) -> dict[str, Any]:
