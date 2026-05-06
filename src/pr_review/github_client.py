@@ -60,6 +60,24 @@ class GitHubClient:
         }
         return self._request("POST", url, json=payload)
 
+    def create_pull_request_review_comment_by_position(
+        self,
+        repository: str,
+        pr_number: int,
+        commit_sha: str,
+        path: str,
+        position: int,
+        body: str,
+    ) -> dict[str, Any]:
+        url = f"https://api.github.com/repos/{repository}/pulls/{pr_number}/comments"
+        payload = {
+            "body": body,
+            "commit_id": commit_sha,
+            "path": path,
+            "position": position,
+        }
+        return self._request("POST", url, json=payload)
+
     def create_issue_comment(self, repository: str, issue_number: int, body: str) -> dict[str, Any]:
         url = f"https://api.github.com/repos/{repository}/issues/{issue_number}/comments"
         return self._request("POST", url, json={"body": body})
@@ -150,6 +168,7 @@ class GitHubClient:
                     annotated_patch=annotated_diff.text,
                     commentable_lines=annotated_diff.commentable_lines,
                     added_lines=annotated_diff.added_lines,
+                    diff_positions_by_line=annotated_diff.diff_positions_by_line,
                     base_content=base_content,
                     head_content=head_content,
                 )

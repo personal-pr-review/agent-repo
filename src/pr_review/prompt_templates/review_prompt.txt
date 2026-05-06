@@ -38,6 +38,7 @@ Rules:
 - Each suggested_comments item must target a concrete [LINE:nnn] marker from annotated_patch_diff.
 - Never guess line numbers from @@ hunk headers or from unannotated code.
 - The line value must be one of the file's valid_comment_lines values.
+- diff_positions_by_line is provided for posting validation; do not invent or return positions.
 - Use side="RIGHT" for all line comments.
 - If an issue cannot be anchored to a [LINE:nnn] marker, omit it from suggested_comments and describe it in issues_found instead.
 - purpose_of_pr, summary_of_changes, problem_being_solved, and expected_outcome must be non-empty.

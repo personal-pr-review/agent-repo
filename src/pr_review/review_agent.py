@@ -40,6 +40,7 @@ class ReviewAgent:
                     "annotated_patch_diff": item.annotated_patch,
                     "valid_comment_lines": item.commentable_lines,
                     "added_lines": item.added_lines,
+                    "diff_positions_by_line": item.diff_positions_by_line,
                 }
                 for item in comparisons
             ],

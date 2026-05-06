@@ -15,6 +15,7 @@ class AnnotatedDiff:
     text: str
     commentable_lines: list[int] = field(default_factory=list)
     added_lines: list[int] = field(default_factory=list)
+    diff_positions_by_line: dict[int, int] = field(default_factory=dict)
 
 
 def annotate_patch_with_target_lines(patch: str) -> AnnotatedDiff:
@@ -26,6 +27,8 @@ def annotate_patch_with_target_lines(patch: str) -> AnnotatedDiff:
     annotated_lines: list[str] = []
     commentable_lines: set[int] = set()
     added_lines: set[int] = set()
+    diff_positions_by_line: dict[int, int] = {}
+    diff_position = 0
 
     for raw_line in patch.splitlines():
         hunk_match = HUNK_HEADER_RE.match(raw_line)
@@ -45,16 +48,21 @@ def annotate_patch_with_target_lines(patch: str) -> AnnotatedDiff:
 
         prefix = raw_line[:1] if raw_line else " "
         if prefix == "+":
+            diff_position += 1
             annotated_lines.append(f"[LINE:{new_line}] {raw_line}")
             commentable_lines.add(new_line)
             added_lines.add(new_line)
+            diff_positions_by_line[new_line] = diff_position
             new_line += 1
         elif prefix == "-":
+            diff_position += 1
             annotated_lines.append(f"[OLD_LINE:{old_line}] {raw_line}")
             old_line += 1
         elif prefix == " ":
+            diff_position += 1
             annotated_lines.append(f"[LINE:{new_line}] {raw_line}")
             commentable_lines.add(new_line)
+            diff_positions_by_line[new_line] = diff_position
             old_line += 1
             new_line += 1
         else:
@@ -64,4 +72,5 @@ def annotate_patch_with_target_lines(patch: str) -> AnnotatedDiff:
         text="\n".join(annotated_lines),
         commentable_lines=sorted(commentable_lines),
         added_lines=sorted(added_lines),
+        diff_positions_by_line=diff_positions_by_line,
     )

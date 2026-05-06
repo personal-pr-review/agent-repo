@@ -16,6 +16,7 @@ class PRCommentPoster:
         commit_sha: str,
         comments: list[dict[str, Any]],
         valid_lines_by_file: dict[str, set[int]],
+        diff_positions_by_file: dict[str, dict[int, int]],
     ) -> dict[str, Any]:
         posted: list[dict[str, Any]] = []
         fallback_comments: list[dict[str, Any]] = []
@@ -27,19 +28,41 @@ class PRCommentPoster:
                 fallback_comments.append({**normalized, "reason": validation_error})
                 continue
 
+            position = diff_positions_by_file.get(normalized["file_path"], {}).get(normalized["line"])
+            if not position:
+                fallback_comments.append({**normalized, "reason": "No diff position found for line."})
+                continue
+
             try:
-                self._github_client.create_pull_request_review_comment(
+                self._github_client.create_pull_request_review_comment_by_position(
                     repository=repository,
                     pr_number=pr_number,
                     commit_sha=commit_sha,
                     path=normalized["file_path"],
-                    line=normalized["line"],
-                    side=normalized["side"],
+                    position=position,
                     body=normalized["body"],
                 )
-                posted.append(normalized)
+                posted.append({**normalized, "position": position})
             except GitHubApiError as exc:
-                fallback_comments.append({**normalized, "reason": str(exc)})
+                try:
+                    self._github_client.create_pull_request_review_comment(
+                        repository=repository,
+                        pr_number=pr_number,
+                        commit_sha=commit_sha,
+                        path=normalized["file_path"],
+                        line=normalized["line"],
+                        side=normalized["side"],
+                        body=normalized["body"],
+                    )
+                    posted.append({**normalized, "position": position, "line_side_fallback": True})
+                except Exception as fallback_exc:
+                    fallback_comments.append(
+                        {
+                            **normalized,
+                            "position": position,
+                            "reason": f"position failed: {exc}; line/side failed: {fallback_exc}",
+                        }
+                    )
             except Exception as exc:
                 fallback_comments.append({**normalized, "reason": f"Unexpected error: {exc}"})
 

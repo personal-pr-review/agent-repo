@@ -21,6 +21,7 @@ class ComparisonAgent:
             "annotated_patch_diff": file_context.annotated_patch,
             "valid_comment_lines": file_context.commentable_lines,
             "added_lines": file_context.added_lines,
+            "diff_positions_by_line": file_context.diff_positions_by_line,
             "line_stats": {
                 "additions": file_context.additions,
                 "deletions": file_context.deletions,
@@ -42,6 +43,7 @@ class ComparisonAgent:
             annotated_patch=file_context.annotated_patch,
             commentable_lines=file_context.commentable_lines,
             added_lines=file_context.added_lines,
+            diff_positions_by_line=file_context.diff_positions_by_line,
             risk_flags=[str(flag) for flag in risk_flags],
             semantic_impact=str(result.get("semantic_impact", "")).strip(),
             risk_level=str(result.get("risk_level", "Low")).strip() or "Low",

@@ -17,6 +17,7 @@ class PRFileContext:
     head_content: str
     commentable_lines: list[int] = field(default_factory=list)
     added_lines: list[int] = field(default_factory=list)
+    diff_positions_by_line: dict[int, int] = field(default_factory=dict)
 
 
 @dataclass
@@ -46,6 +47,7 @@ class ComparisonResult:
     annotated_patch: str = ""
     commentable_lines: list[int] = field(default_factory=list)
     added_lines: list[int] = field(default_factory=list)
+    diff_positions_by_line: dict[int, int] = field(default_factory=dict)
     risk_flags: list[str] = field(default_factory=list)
     semantic_impact: str = ""
     risk_level: str = "Low"

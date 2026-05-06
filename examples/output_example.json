@@ -30,6 +30,11 @@
       "added_lines": [
         11
       ],
+      "diff_positions_by_line": {
+        "10": 1,
+        "11": 2,
+        "12": 3
+      },
       "risk_flags": [
         "Lock timeout could surface false negatives under heavy load"
       ],

@@ -65,6 +65,7 @@ def post_comments_from_payload(
         comments = []
 
     valid_lines_by_file: dict[str, set[int]] = {}
+    diff_positions_by_file: dict[str, dict[int, int]] = {}
     for item in payload.get("comparison_results", []):
         if not isinstance(item, dict):
             continue
@@ -76,6 +77,15 @@ def post_comments_from_payload(
             for line in item.get("commentable_lines", [])
             if isinstance(line, int) or str(line).isdigit()
         }
+        raw_positions = item.get("diff_positions_by_line", {})
+        if isinstance(raw_positions, dict):
+            positions: dict[int, int] = {}
+            for line, position in raw_positions.items():
+                try:
+                    positions[int(line)] = int(position)
+                except (TypeError, ValueError):
+                    continue
+            diff_positions_by_file[file_path] = positions
 
     github_client = GitHubClient(token)
     poster = PRCommentPoster(github_client)
@@ -85,6 +95,7 @@ def post_comments_from_payload(
         commit_sha=commit_sha,
         comments=comments,
         valid_lines_by_file=valid_lines_by_file,
+        diff_positions_by_file=diff_positions_by_file,
     )
 
 
