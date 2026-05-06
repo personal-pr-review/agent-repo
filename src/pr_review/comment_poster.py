@@ -95,14 +95,21 @@ class PRCommentPoster:
                 continue
 
             try:
-                self._github_client.create_pull_request_review_thread(
+                result = self._github_client.create_pull_request_review_thread(
                     pull_request_node_id=pull_request_node_id,
                     path=item["file_path"],
                     line=item["line"],
                     side=item["side"],
                     body=item["body"],
                 )
-                posted.append({**item, "posted_via": "graphql_review_thread"})
+                thread_id = self._extract_graphql_thread_id(result)
+                posted.append(
+                    {
+                        **item,
+                        "posted_via": "graphql_review_thread",
+                        "graphql_thread_id": thread_id,
+                    }
+                )
             except Exception as exc:
                 rest_ready_comments.append({**item, "graphql_error": str(exc)})
 
@@ -199,15 +206,28 @@ class PRCommentPoster:
         if not posted_comments:
             return []
 
+        graph_verified = [
+            item
+            for item in posted_comments
+            if item.get("posted_via") == "graphql_review_thread" and item.get("graphql_thread_id")
+        ]
+        rest_candidates = [item for item in posted_comments if item not in graph_verified]
+        if not rest_candidates:
+            print(
+                "PR comment verification: "
+                f"posted_attempts={len(posted_comments)}, verified_visible={len(graph_verified)}"
+            )
+            return graph_verified
+
         time.sleep(2)
         try:
             github_comments = self._github_client.list_pull_request_review_comments(repository, pr_number)
         except Exception as exc:
             print(f"Warning: unable to verify PR review comments: {exc}")
-            return []
+            return graph_verified
 
-        verified: list[dict[str, Any]] = []
-        for item in posted_comments:
+        verified: list[dict[str, Any]] = list(graph_verified)
+        for item in rest_candidates:
             if self._matching_github_comment_exists(item, github_comments):
                 verified.append(item)
 
@@ -255,6 +275,13 @@ class PRCommentPoster:
             int(comment.get("line", 0) or 0),
             str(comment.get("body", "")).strip(),
         )
+
+    @staticmethod
+    def _extract_graphql_thread_id(result: dict[str, Any]) -> str:
+        try:
+            return str(result["data"]["addPullRequestReviewThread"]["thread"]["id"])
+        except (KeyError, TypeError):
+            return ""
 
     @staticmethod
     def _normalize_comment(comment: dict[str, Any]) -> dict[str, Any]:
