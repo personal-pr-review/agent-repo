@@ -54,7 +54,8 @@ jobs:
         working-directory: agent-repo
         run: |
           git rev-parse HEAD
-          grep -n "GraphQL PR review" src/pr_review/comment_poster.py || true
+          grep -n "Dynamic rulebooks selected" src/pr_review/pipeline.py || true
+          grep -n "Created pending PR review" src/pr_review/comment_poster.py || true
 
       - name: Set up Python
         uses: actions/setup-python@v6

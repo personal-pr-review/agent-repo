@@ -8,6 +8,7 @@ from .github_client import GitHubClient
 from .llm_client import LLMClient
 from .models import PipelineOutput
 from .review_agent import ReviewAgent
+from .rulebook_loader import RulebookLoader
 
 
 class PRReviewPipeline:
@@ -17,11 +18,13 @@ class PRReviewPipeline:
         llm_client: LLMClient,
         prompts_dir: Path,
         template_path: Path,
+        rules_root: Path = Path("rules"),
     ) -> None:
         self._github_client = github_client
         self._comparison_agent = ComparisonAgent(llm_client, prompts_dir / "comparison_prompt.txt")
         self._review_agent = ReviewAgent(llm_client, prompts_dir / "review_prompt.txt")
         self._docx_generator = DocxGenerator(template_path=template_path)
+        self._rulebook_loader = RulebookLoader(rules_root=rules_root)
 
     def run(
         self,
@@ -42,7 +45,13 @@ class PRReviewPipeline:
         )
 
         comparison_results = [self._comparison_agent.run_for_file(item) for item in file_contexts]
-        review_result = self._review_agent.run(pr_metadata, comparison_results)
+        rulebook_context = self._rulebook_loader.load_for_files(item.path for item in file_contexts)
+        print(
+            "Dynamic rulebooks selected: "
+            f"{', '.join(rulebook_context.selected_rulebooks) or 'none'}"
+        )
+
+        review_result = self._review_agent.run(pr_metadata, comparison_results, rulebook_context)
 
         self._docx_generator.generate(output_docx_path, pr_metadata, comparison_results, review_result)
 
@@ -50,6 +59,7 @@ class PRReviewPipeline:
             pr_metadata=pr_metadata,
             comparison_results=comparison_results,
             review_result=review_result,
+            rulebook_context=rulebook_context.to_dict(),
         )
 
         output_json_path.parent.mkdir(parents=True, exist_ok=True)

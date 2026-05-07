@@ -44,6 +44,10 @@
   ],
   "review_result": {
     "summary": "PR improves reliability for retry scenarios with moderate concurrency risk.",
+    "purpose_of_pr": "Fix retry handling so duplicate payment requests do not process twice.",
+    "summary_of_changes": "Adds idempotency lock handling around retry processing.",
+    "problem_being_solved": "Duplicate retry requests could be processed more than once.",
+    "expected_outcome": "Duplicate retry requests return a consistent cached response.",
     "issues_found": [
       {
         "severity": "Medium",
@@ -63,6 +67,23 @@
     "final_recommendation": "Merge",
     "reasoning": "Core behavior is correct; observability improvements can be follow-up work.",
     "risk_level": "Medium"
+  },
+  "rulebook_context": {
+    "selected_rulebooks": [
+      "Common Review Rules",
+      "Python Review Rules"
+    ],
+    "detected_ecosystems": [
+      "python"
+    ],
+    "selection_reason": {
+      "common": [
+        "Loaded for every PR."
+      ],
+      "python": [
+        "src/service/retry.py"
+      ]
+    }
   },
   "comment_posting_result": {}
 }

@@ -5,14 +5,27 @@ from typing import Any
 
 from .llm_client import LLMClient
 from .models import ComparisonResult, PRMetadata, ReviewResult
+from .prompt_builder import PromptBuilder
+from .rulebook_loader import RulebookContext
 
 
 class ReviewAgent:
-    def __init__(self, llm_client: LLMClient, prompt_path: Path) -> None:
+    def __init__(
+        self,
+        llm_client: LLMClient,
+        prompt_path: Path,
+        prompt_builder: PromptBuilder | None = None,
+    ) -> None:
         self._llm_client = llm_client
         self._prompt = prompt_path.read_text(encoding="utf-8")
+        self._prompt_builder = prompt_builder or PromptBuilder()
 
-    def run(self, pr_metadata: PRMetadata, comparisons: list[ComparisonResult]) -> ReviewResult:
+    def run(
+        self,
+        pr_metadata: PRMetadata,
+        comparisons: list[ComparisonResult],
+        rulebook_context: RulebookContext | None = None,
+    ) -> ReviewResult:
         payload = {
             "pr_metadata": {
                 "repository": pr_metadata.repository,
@@ -44,9 +57,11 @@ class ReviewAgent:
                 }
                 for item in comparisons
             ],
+            "rulebooks_loaded": rulebook_context.to_dict() if rulebook_context else {},
         }
 
-        result = self._llm_client.json_chat(self._prompt, payload)
+        system_prompt = self._prompt_builder.build_review_prompt(self._prompt, rulebook_context)
+        result = self._llm_client.json_chat(system_prompt, payload)
 
         issues_found = self._normalize_list_of_dicts(result.get("issues_found", []))
         suggested_comments = self._normalize_suggested_comments(result.get("suggested_comments", []))

@@ -33,6 +33,10 @@ Return ONLY a JSON object with this exact schema:
 
 Rules:
 - Prioritize correctness, safety, and maintainability.
+- Apply the dynamically selected review rulebooks provided in the system prompt.
+- Do not apply framework-specific rules for ecosystems that were not selected.
+- Use rulebooks to identify concrete correctness, security, reliability, architecture, testing, and maintainability risks.
+- Avoid noisy comments about style-only preferences unless they create practical risk.
 - final_recommendation should be "Do Not Merge" when unresolved high-risk issues exist.
 - suggested_comments should be concise and directly usable in PR discussions.
 - Each suggested_comments item must target a concrete [LINE:nnn] marker from annotated_patch_diff.
