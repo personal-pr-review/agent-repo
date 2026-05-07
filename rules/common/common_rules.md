@@ -38,3 +38,5 @@ Use these rules for every PR. Focus on changed behavior, not unrelated legacy co
 - [COMMON-RESP-001] Generate comments only for actionable issues tied to the changed diff.
 - [COMMON-RESP-002] Prefer one concise comment per distinct issue; avoid repeating the same concern across nearby lines.
 - [COMMON-RESP-003] If a concern cannot be anchored to a valid added line, include it in issues_found rather than suggested_comments.
+- [COMMON-RESP-004] Do not manufacture comments for clean or low-risk PRs; an empty suggested_comments array is a valid senior review outcome.
+- [COMMON-RESP-005] Inline comments must explain practical impact, not just state that code could be improved.

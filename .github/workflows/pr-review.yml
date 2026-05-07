@@ -1,0 +1,28 @@
+name: PR Review (Centralized Agent)
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: Pull request number to review
+        required: true
+        type: string
+
+jobs:
+  centralized-review:
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+    uses: personal-pr-review/agent-repo/.github/workflows/review.yml@main
+    with:
+      repository: ${{ github.repository }}
+      pr_number: ${{ github.event_name == 'pull_request' && github.event.pull_request.number || inputs.pr_number }}
+      base_branch: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.ref || 'main' }}
+      head_branch: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.ref || 'manual-review' }}
+      commit_sha: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+    secrets:
+      repo_token: ${{ secrets.GITHUB_TOKEN }}
+      LLM_API_KEY: ${{ secrets.LLM_API_KEY }}

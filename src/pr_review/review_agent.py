@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from .comment_quality import ReviewCommentQualityGate
 from .llm_client import LLMClient
 from .models import ComparisonResult, PRMetadata, ReviewResult
 from .prompt_builder import PromptBuilder
@@ -15,10 +16,12 @@ class ReviewAgent:
         llm_client: LLMClient,
         prompt_path: Path,
         prompt_builder: PromptBuilder | None = None,
+        comment_quality_gate: ReviewCommentQualityGate | None = None,
     ) -> None:
         self._llm_client = llm_client
         self._prompt = prompt_path.read_text(encoding="utf-8")
         self._prompt_builder = prompt_builder or PromptBuilder()
+        self._comment_quality_gate = comment_quality_gate or ReviewCommentQualityGate()
 
     def run(
         self,
@@ -65,6 +68,10 @@ class ReviewAgent:
 
         issues_found = self._normalize_list_of_dicts(result.get("issues_found", []))
         suggested_comments = self._normalize_suggested_comments(result.get("suggested_comments", []))
+        filtered_comments = self._comment_quality_gate.filter(suggested_comments, issues_found)
+        removed_comments = len(suggested_comments) - len(filtered_comments)
+        if removed_comments > 0:
+            print(f"Review comment quality gate removed {removed_comments} low-signal comment(s).")
 
         return ReviewResult(
             summary=str(result.get("summary", "")).strip(),
@@ -73,7 +80,7 @@ class ReviewAgent:
             problem_being_solved=str(result.get("problem_being_solved", "")).strip(),
             expected_outcome=str(result.get("expected_outcome", "")).strip(),
             issues_found=issues_found,
-            suggested_comments=suggested_comments,
+            suggested_comments=filtered_comments,
             final_recommendation=str(result.get("final_recommendation", "Merge")).strip() or "Merge",
             reasoning=str(result.get("reasoning", "")).strip(),
             risk_level=str(result.get("risk_level", "Low")).strip() or "Low",
