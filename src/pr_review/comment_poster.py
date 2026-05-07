@@ -394,13 +394,18 @@ class PRCommentPoster:
             return graph_verified
 
         verified: list[dict[str, Any]] = list(graph_verified)
-        for attempt in range(1, 4):
-            time.sleep(2)
+        for attempt in range(1, 6):
+            time.sleep(3)
             try:
                 github_comments = self._github_client.list_pull_request_review_comments(repository, pr_number)
             except Exception as exc:
                 print(f"Warning: unable to verify PR review comments on attempt {attempt}: {exc}")
                 continue
+
+            print(
+                "PR comment verification attempt: "
+                f"attempt={attempt}, fetched_comments={len(github_comments)}"
+            )
 
             verified_keys = {self._posted_comment_key(item) for item in verified}
             for item in rest_candidates:
@@ -428,6 +433,8 @@ class PRCommentPoster:
         expected_path = posted_comment.get("file_path")
         expected_line = posted_comment.get("line")
         expected_body = str(posted_comment.get("body", "")).strip()
+        expected_position = posted_comment.get("position")
+        expected_review_id = posted_comment.get("review_id")
 
         for comment in github_comments:
             if comment.get("path") != expected_path:
@@ -435,6 +442,22 @@ class PRCommentPoster:
             actual_body = str(comment.get("body", "")).strip()
             if actual_body != expected_body:
                 continue
+
+            if expected_review_id and str(comment.get("pull_request_review_id", "")) == str(expected_review_id):
+                return True
+
+            possible_positions = {
+                comment.get("position"),
+                comment.get("original_position"),
+            }
+            normalized_positions = set()
+            for position in possible_positions:
+                try:
+                    normalized_positions.add(int(position))
+                except (TypeError, ValueError):
+                    continue
+            if expected_position in normalized_positions:
+                return True
 
             possible_lines = {
                 comment.get("line"),
