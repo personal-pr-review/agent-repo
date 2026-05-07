@@ -27,6 +27,7 @@ class PromptBuilder:
                 (
                     "Rulebook application guidance:\n"
                     "- Use rulebooks to judge risk and generate issues_found.\n"
+                    "- Cross-check rulebook concerns against review_focus and comparison_results before raising them.\n"
                     "- Generate suggested_comments only for concrete violations anchored to valid [LINE:nnn] markers.\n"
                     "- Avoid noisy style-only comments unless they create a real correctness, security, or maintenance risk.\n"
                     "- Do not force comments for clean, low-risk PRs; returning an empty suggested_comments array is acceptable.\n"

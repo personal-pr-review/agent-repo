@@ -23,6 +23,9 @@ class ReviewCommentQualityGate:
         r"\bformatting\b",
         r"\badd comments?\b",
         r"\badd documentation\b",
+        r"\blogging the criteria\b",
+        r"\bensure transparency\b",
+        r"\btransparency in the review process\b",
     )
 
     _WEAK_SPECULATION_PATTERNS = (
@@ -169,6 +172,125 @@ class ReviewCommentQualityGate:
                 continue
             seen.add(key)
             output.append(comment)
+        return output
+
+    @staticmethod
+    def _matches_any(text: str, patterns: tuple[str, ...]) -> bool:
+        return any(re.search(pattern, text) for pattern in patterns)
+
+    @staticmethod
+    def _normalize_text(text: str) -> str:
+        return re.sub(r"\s+", " ", text.lower()).strip()
+
+
+class ReviewIssueQualityGate:
+    """Keep issue summaries useful enough for the final report."""
+
+    MAX_ISSUES = 10
+    MIN_TEXT_CHARS = 25
+    _SEVERITY_ORDER = {"High": 0, "Medium": 1, "Low": 2}
+
+    _LOW_VALUE_PATTERNS = (
+        r"\bconsider logging the criteria\b",
+        r"\bensure transparency\b",
+        r"\bthis could be improved\b",
+        r"\bcode quality\b",
+        r"\bgeneral maintainability\b",
+        r"\badd documentation\b",
+        r"\bminor\b",
+        r"\bnit\b",
+        r"\bstyle\b",
+    )
+
+    _WEAK_SPECULATION_PATTERNS = (
+        r"\bmaybe\b",
+        r"\bpossibly\b",
+        r"\bcould potentially\b",
+        r"\bmight be beneficial\b",
+        r"\bmay want to consider\b",
+        r"\bnice to have\b",
+    )
+
+    _MATERIAL_RISK_TERMS = {
+        "authorization",
+        "backward compatibility",
+        "bypass",
+        "concurrency",
+        "contract",
+        "corrupt",
+        "data integrity",
+        "data loss",
+        "deadlock",
+        "exception",
+        "failure",
+        "idempotency",
+        "incorrect",
+        "injection",
+        "invalid",
+        "leak",
+        "malformed",
+        "migration",
+        "n+1",
+        "null",
+        "permission",
+        "race",
+        "regression",
+        "security",
+        "timeout",
+        "transaction",
+        "validation",
+        "xss",
+    }
+
+    def filter(self, issues: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        normalized = [item for item in (self._normalize_issue(issue) for issue in issues) if item]
+        deduped = self._dedupe(normalized)
+        filtered = [issue for issue in deduped if self._is_high_signal_issue(issue)]
+        filtered.sort(key=lambda item: self._SEVERITY_ORDER[item["severity"]])
+        return filtered[: self.MAX_ISSUES]
+
+    def _normalize_issue(self, issue: dict[str, Any]) -> dict[str, Any] | None:
+        if not isinstance(issue, dict):
+            return None
+
+        severity = str(issue.get("severity", "Low")).strip().capitalize()
+        if severity not in self._SEVERITY_ORDER:
+            severity = "Low"
+
+        normalized = {
+            "severity": severity,
+            "file_path": str(issue.get("file_path", "")).strip(),
+            "issue": str(issue.get("issue", "")).strip(),
+            "recommendation": str(issue.get("recommendation", "")).strip(),
+        }
+        if not normalized["issue"] or not normalized["recommendation"]:
+            return None
+        return normalized
+
+    def _is_high_signal_issue(self, issue: dict[str, Any]) -> bool:
+        combined = self._normalize_text(f"{issue['issue']} {issue['recommendation']}")
+        if len(combined) < self.MIN_TEXT_CHARS:
+            return False
+        if self._matches_any(combined, self._LOW_VALUE_PATTERNS):
+            return False
+        if self._matches_any(combined, self._WEAK_SPECULATION_PATTERNS):
+            return False
+        if issue["severity"] in {"High", "Medium"}:
+            return True
+        return any(term in combined for term in self._MATERIAL_RISK_TERMS)
+
+    def _dedupe(self, issues: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        seen: set[tuple[str, str]] = set()
+        output: list[dict[str, Any]] = []
+        for issue in issues:
+            key = (
+                issue["file_path"],
+                self._normalize_text(issue["issue"]),
+            )
+            if key in seen:
+                continue
+            seen.add(key)
+            output.append(issue)
         return output
 
     @staticmethod

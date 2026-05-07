@@ -3,10 +3,11 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from .comment_quality import ReviewCommentQualityGate
+from .comment_quality import ReviewCommentQualityGate, ReviewIssueQualityGate
 from .llm_client import LLMClient
 from .models import ComparisonResult, PRMetadata, ReviewResult
 from .prompt_builder import PromptBuilder
+from .review_focus import ReviewFocusBuilder
 from .rulebook_loader import RulebookContext
 
 
@@ -17,11 +18,15 @@ class ReviewAgent:
         prompt_path: Path,
         prompt_builder: PromptBuilder | None = None,
         comment_quality_gate: ReviewCommentQualityGate | None = None,
+        issue_quality_gate: ReviewIssueQualityGate | None = None,
+        review_focus_builder: ReviewFocusBuilder | None = None,
     ) -> None:
         self._llm_client = llm_client
         self._prompt = prompt_path.read_text(encoding="utf-8")
         self._prompt_builder = prompt_builder or PromptBuilder()
         self._comment_quality_gate = comment_quality_gate or ReviewCommentQualityGate()
+        self._issue_quality_gate = issue_quality_gate or ReviewIssueQualityGate()
+        self._review_focus_builder = review_focus_builder or ReviewFocusBuilder()
 
     def run(
         self,
@@ -29,6 +34,7 @@ class ReviewAgent:
         comparisons: list[ComparisonResult],
         rulebook_context: RulebookContext | None = None,
     ) -> ReviewResult:
+        review_focus = self._review_focus_builder.build(pr_metadata, comparisons)
         payload = {
             "pr_metadata": {
                 "repository": pr_metadata.repository,
@@ -61,17 +67,30 @@ class ReviewAgent:
                 for item in comparisons
             ],
             "rulebooks_loaded": rulebook_context.to_dict() if rulebook_context else {},
+            "review_focus": review_focus,
         }
 
         system_prompt = self._prompt_builder.build_review_prompt(self._prompt, rulebook_context)
         result = self._llm_client.json_chat(system_prompt, payload)
 
-        issues_found = self._normalize_list_of_dicts(result.get("issues_found", []))
+        raw_issues_found = self._normalize_list_of_dicts(result.get("issues_found", []))
+        issues_found = self._issue_quality_gate.filter(raw_issues_found)
+        removed_issues = len(raw_issues_found) - len(issues_found)
+        if removed_issues > 0:
+            print(f"Review issue quality gate removed {removed_issues} low-signal issue(s).")
+
         suggested_comments = self._normalize_suggested_comments(result.get("suggested_comments", []))
         filtered_comments = self._comment_quality_gate.filter(suggested_comments, issues_found)
         removed_comments = len(suggested_comments) - len(filtered_comments)
         if removed_comments > 0:
             print(f"Review comment quality gate removed {removed_comments} low-signal comment(s).")
+
+        risk_level = self._normalize_risk_level(str(result.get("risk_level", "Low")).strip(), issues_found)
+        final_recommendation = self._normalize_final_recommendation(
+            str(result.get("final_recommendation", "Merge")).strip(),
+            issues_found,
+            filtered_comments,
+        )
 
         return ReviewResult(
             summary=str(result.get("summary", "")).strip(),
@@ -81,9 +100,9 @@ class ReviewAgent:
             expected_outcome=str(result.get("expected_outcome", "")).strip(),
             issues_found=issues_found,
             suggested_comments=filtered_comments,
-            final_recommendation=str(result.get("final_recommendation", "Merge")).strip() or "Merge",
+            final_recommendation=final_recommendation,
             reasoning=str(result.get("reasoning", "")).strip(),
-            risk_level=str(result.get("risk_level", "Low")).strip() or "Low",
+            risk_level=risk_level,
         )
 
     @staticmethod
@@ -122,3 +141,30 @@ class ReviewAgent:
                 }
             )
         return comments
+
+    @staticmethod
+    def _normalize_risk_level(raw_risk: str, issues_found: list[dict[str, Any]]) -> str:
+        valid = {"Low", "Medium", "High"}
+        risk_level = raw_risk.capitalize() if raw_risk.capitalize() in valid else "Low"
+
+        severities = {str(issue.get("severity", "")).capitalize() for issue in issues_found}
+        if "High" in severities:
+            return "High"
+        if "Medium" in severities and risk_level == "Low":
+            return "Medium"
+        if not issues_found:
+            return "Low" if risk_level == "High" else risk_level
+        return risk_level
+
+    @staticmethod
+    def _normalize_final_recommendation(
+        raw_recommendation: str,
+        issues_found: list[dict[str, Any]],
+        suggested_comments: list[dict[str, Any]],
+    ) -> str:
+        high_severity_exists = any(str(issue.get("severity", "")).capitalize() == "High" for issue in issues_found)
+        if high_severity_exists:
+            return "Do Not Merge"
+        if not issues_found and not suggested_comments:
+            return "Merge"
+        return "Do Not Merge" if raw_recommendation == "Do Not Merge" else "Merge"
